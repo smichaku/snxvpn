@@ -43,7 +43,7 @@ setup \
     , author_email     = "rsc@runtux.com"
     , platforms        = 'Linux'
     , url              = "https://github.com/schlatterbeck/snxvpn"
-    , scripts          = ['snxconnect']
+    , scripts          = ['snxconnect', 'run-snx']
     , install_requires = [ 'bs4', 'pycrypto', 'lxml' ]
     , classifiers      = \
         [ 'Development Status :: 3 - Alpha'

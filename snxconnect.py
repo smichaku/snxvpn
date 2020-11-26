@@ -168,7 +168,7 @@ class HTML_Requester (object) :
     def login (self) :
         if self.has_cookies :
             self.debug ("has cookie")
-            self.nextfile = 'Portal/Main'
+            self.nextfile = 'sslvpn/Portal/Main'
             self.open ()
             self.debug (self.purl)
             if self.purl.endswith ('Portal/Main') :
@@ -194,7 +194,7 @@ class HTML_Requester (object) :
             return
         self.open (do_soup = False)
         self.parse_rsa_params ()
-        if not self.modulus :
+        if not self.modulus or not self.exponent:
             # Error message already given in parse_rsa_params
             return
         for form in self.soup.find_all ('form') :
@@ -204,7 +204,7 @@ class HTML_Requester (object) :
                 break
         self.debug (self.nextfile)
 
-        enc = PW_Encode (modulus = self.modulus, exponent = self.exponent)
+        enc = PW_Encode (modulus = self.modulus, exponent = self.exponent, testing = True)
         d = dict \
             ( password      = enc.encrypt (self.args.password)
             , userName      = self.args.username
@@ -217,15 +217,17 @@ class HTML_Requester (object) :
         self.debug (self.purl)
         self.debug (self.info)
 
-        if self.args.multi_challenge :
-            while 'MultiChallenge' in self.purl :
-                d = self.parse_pw_response ()
-                otp = getpass ('One-time Password: ')
-                d ['password'] = enc.encrypt (otp)
-                self.debug ("nextfile: %s" % self.nextfile)
-                self.debug ("purl: %s" % self.purl)
-                self.open (data = urlencode (d))
-                self.debug ("info: %s" % self.info)
+        if 'MultiChallenge' not in self.purl:
+            print ("Login failed (expected MultiChallenge)")
+            self.debug ("Login failed (no MultiChallenge): %s" % self.purl)
+            return
+        d = self.parse_pw_response ()
+        otp = getpass ('One-time Password: ')
+        d ['password'] = enc.encrypt (otp)
+        self.debug ("nextfile: %s" % self.nextfile)
+        self.debug ("purl: %s" % self.purl)
+        self.open (data = urlencode (d))
+        self.debug ("info: %s" % self.info)
 
         if self.purl.endswith ('Login/ActivateLogin') :
             if self.args.save_cookies :
@@ -279,6 +281,7 @@ class HTML_Requester (object) :
             except IncompleteRead as e:
                 page = e.partial
             self.soup = BeautifulSoup (page, "lxml")
+            self.page = page
         self.purl = f.geturl ()
         self.info = f.info ()
     # end def open
@@ -288,13 +291,11 @@ class HTML_Requester (object) :
             connecting the VPN. This information then passed to the snx
             program via a socket.
         """
-        for script in self.soup.find_all ('script') :
-            if '/* Extender.user_name' in script.text :
-                break
-        else :
-            print ("Error retrieving extender variables")
+        script = self.page.decode('utf-8')
+        if '/* Extender.user_name' not in script:
+            print("Error retrieving extender variables")
             return
-        for line in script.text.split ('\n') :
+        for line in script.split ('\n') :
             if '/* Extender.user_name' in line :
                 break
         stmts = line.split (';')
@@ -370,22 +371,8 @@ class PW_Encode (object) :
         a529e86cf80dd131e3bdae1f6dbab76f67f674e42041dde801ebdb790ab0637d56cc82f52587f2d4d34d26c490eee3a1ebfd80df18ec41c4440370b1ecb2dec3f811e09d2248635dd8aab60a97293ec0315a70bf024b33e8a8a02582fbabc98dd72d913530151e78b47119924f45b711b9a1189d5eec5a20e6f9bc1d44bfd554
     """
 
-    def __init__ (self, modulus = None, exponent = None, testing = False) :
-        m = rsatype \
-            ( b'c87e9e96ffde3ec47c3f116ea5ac0e15'
-              b'34490b3da6dbbedae1af50dc32bf1012'
-              b'bdb7e1ff67237e0302b48c8731f343ff'
-              b'644662de2bb21d2b033127660e525d58'
-              b'889f8f6f05744906dddc8f4b85e0916b'
-              b'5d9cf5b87093ed260238674f143801b7'
-              b'e58a18795adc9acefaf0f378326fea19'
-              b'9ac6e5a88be83a52d4a77b3bba5f1aed'
-            , 16
-            )
-        e = rsatype (b'010001', 16)
-        m = modulus  or m
-        e = exponent or e
-        self.pubkey  = RSA.construct ((m, e))
+    def __init__ (self, modulus, exponent, testing = False) :
+        self.pubkey  = RSA.construct ((modulus, exponent))
         self.testing = testing
     # end def __init__
 
